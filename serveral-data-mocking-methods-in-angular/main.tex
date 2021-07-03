@@ -1,0 +1,172 @@
+\documentclass{ctexart}
+\usepackage{listings}
+\usepackage{fontspec}
+\usepackage{geometry}
+
+\geometry{margin=3cm}
+
+\setmonofont{Menlo}[Scale=0.8]
+
+\lstdefinestyle{mystyle}{
+    basicstyle=\ttfamily,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2
+}
+
+\lstset{style=mystyle}
+
+\author{}
+
+\title{在Angular项目中实现Data Mocking的几种方式}
+
+\begin{document}
+    \maketitle
+
+    \begin{abstract}
+        在这篇文章中，我们会介绍几种基于Angular的一些特性实现的Data Mocking方法，
+        通过这些方法，我们可以尽可能真实地模拟后端的开发环境，
+        实现更加方便的前端开发、测试环境。具体地，我们会分别介绍：
+        1) 基于 IoC 设计模式和 DI 技术的Data Mocking;
+        2) 基于 HttpInterceptor 的Data Mocking;
+        3) 基于工厂模式的配置切换方法。
+        这些方法，解决了如何在 Angular 中灵活优雅地实现 Data Mocking 的问题，
+        它的意义在于：为前端开发人员提供了一种可依赖的开发测试方式。
+    \end{abstract}
+
+    \section{引言}
+
+    所谓Data Mocking，我们指的是，在前端以各种方式模拟后端，
+    其中最主要的，就是模拟后端的响应（返回值），也能模拟一些简单的后端交互逻辑。
+    通过这样的模拟(Simulation), 我们能提前知道我们写的程序到底是不是对的，
+    我们能提前知道，我们有没有正确地处理后端返回的数据，以及\textbf{假如说}后端
+    返回了正确的数据，我们能否做正确的处理。这些问题的答案很重要，因为当出现问题时，
+    这些问题的答案能帮助我们快速定位问题。
+
+    以上说的是简单的模拟，它得出的结果回答了「当后端按正常情况返回数据时，
+    前端的表现是否也正常」的问题，Data Mocking也能做一些复杂的模拟，
+    比如说模拟各种边界情况，对于一个按照约定本应是字符串的字段，
+    我们可以模拟后端返回一个数字，一个数组或者一个布尔值，
+    甚至模拟这种字段缺失的情况，以此来测试前端对于异常情况的处理如何，或者说前端
+    的鲁棒性如何。压力测试（边界测试）实际上也属于这一类模拟，
+    只不过后端返回的数据都是正常的，但是数据量远远地超出了正常的范围。
+
+    往大了说，不管是前端也好，后端也好，在开发过程中，进行足够多的测试是有必要的，
+    这就好比人们会通过打预防针接种疫苗，来获得对一些疾病的免疫能力，
+    这其实就相当于软件开发中的自测，它不能够解决所有的问题，
+    但是做了自测肯定比没做要好。
+
+    \section{控制反转}
+
+    控制反转(Inversion of Control, IoC)是一种开发实践，
+    简单来说，在按照 IoC 思想设计的软件架构中，程序执行的控制权在框架，
+    开发人员要做的，只是写好各个任务模块的代码，而框架则会在需要的时候去调用它们，
+    这于传统的过程式编程的控制流是相反的——在传统的控制流中，程序员要自己决定
+    先执行什么、后执行什么，而在按照 IoC 思想设计的的软件中，
+    是框架去按需执行各个部分。
+
+    \subsection{依赖注入}
+
+    依赖注入(Dependency Injection)是一种设计模式，它实现了 IoC 开发实践。
+    在 DI 设计模式中，有一个 IoC 容器负责初始化一个对象的各种依赖，开发人员
+    只需把这种依赖声明出来。举例来说，当我们在 Angular 项目中需要发起 Http 请求时，
+    有可能会这样写：
+
+    \lstinputlisting{code/code-1.ts}
+
+    这里，\verb`HttpClient` 是一个 Injection Token, 我们只是在构造器中告诉 IoC 容器：
+    我们需要一个 HttpClient, 你去找吧，找来了顺便帮我实例化成 \verb`http` 并且注入到当前 \verb`HeroListComponent` 中供我使用。
+    我们从前到后从来没有自己 \verb`new` 过这个 \verb`HttpClient`, 这都是 IoC 容器帮我们做的。
+
+    如果觉得这个例子还是有些不理解的话，且看下一个例子：假设这回我们不打算在 \verb`Component` 里边做，
+    而是希望将获取数据这个过程，交给 Service 来做，在此之前，我们先定好接口，
+    也就是约定 Service 应该给我们获取到什么样的数据：
+
+    \lstinputlisting{code/code-2.ts}
+
+    好了，这样 Service 中实现的数据查询函数只要返给我们关于 \verb`IHeroQueryResult` 的 \verb`Observable` 就可以了，
+    加载的过程是标准化的：
+
+    \lstinputlisting{code/code-3.ts}
+
+    我们首先对这样一个实现英雄查询功能的 Service 做个约定：
+
+    \lstinputlisting{code/code-4.ts}
+
+    然后我们做两个实现，一个是 Mock 的：
+
+    \lstinputlisting{code/code-5.ts}
+    
+    一个是真正向后端发起 Http 请求的：
+
+    \lstinputlisting{code/code-6.ts}
+
+    在 Module 定义文件中，我们可以这样写：
+
+    \lstinputlisting{code/code-7.ts}
+
+    也可以这样写：
+
+    \lstinputlisting{code/code-8.ts}
+
+    这样对于在 \verb`HeroListComponent` 中出现的 \verb`HeroDataService` 这个 Injection Token, 
+    R3 (Angular 负责实现依赖注入的模块) 会去 HeroModule 中查找到底是使用 \verb`HttpHeroDataService` 的实例来提供，
+    还是使用 \verb`MockHeroDataService` 的实例来提供：
+
+    \lstinputlisting{code/code-8-plus.ts}
+
+    如果你觉得这个例子太过复杂，我们可以来看两个简单的例子，假设我们的产品有两个名称，一个内部名称，和一个外部名称，
+    那么我们可以这样先定义一个 InjectionToken，以及写好两个产品名称：
+
+    \lstinputlisting{code/code-9.ts}
+
+    我们会在 Layout 中依赖它：
+
+    \lstinputlisting{code/code-10.ts}
+
+    当然，为了让 R3 能找到 \verb`LOGO` 这个 Injection Token 的「提供者」，还需要在 Module 中显式声明：
+
+    \lstinputlisting{code/code-11.ts}
+
+    这样，\verb`LayoutComponent` 依赖的那个 \verb`LOGO` 就会被 R3 用 \verb`INTERNAL_LOGO` 注入。
+
+    \section{拦截器}
+
+    Angular 的 http 模块提供了 \verb`HTTP_INTERCEPTORS` 这个 Injection Token, 它被定义为：
+
+    \lstinputlisting[numbers=none]{code/code-12.ts}
+
+    我们可以自己实现想要的 \verb`HttpInterceptor` 提供给 \verb`HTTP_INTERCEPTORS` 来实现 Http 请求拦截功能，这样做，
+    可以在请求发出之前修改请求参数，也可以在请求返回以后修改返回结果。
+
+    现在让我们来实现一个简单的 \verb`HttpInterceptor`, 它拦截符合条件的请求，并且返回 404：
+
+    \lstinputlisting{code/code-13.ts}
+
+    通过在 Hero 模块中以这种方式提供 \verb`HttpInterceptor`, 我们可以拦截发往 \verb`/api/v1/heroes` 的请求，并且无条件返回 404:
+
+    \lstinputlisting{code/code-14.ts}
+
+    注意到 \verb`multi: true`, 这是因为 \verb`HTTP_INTERCEPTORS` 是一个 \verb`HttpInterceptor[]`, 可以以这种方式被多次提供，也就是说，我们可以实现多个 \verb`HttpInterceptor`, 并且都提供给 \verb`HTTP_INTERCEPTORS`, 使得每个 \verb`HttpInterceptor` 都生效。
+
+    \section{工厂模式}
+
+    现在是，我们在线上和开发测试中使用两套后端，我们希望能实现自动切换。具体地，我们在一个配置文件中定义好后端地址：
+
+    \lstinputlisting{code/code-15.ts}
+
+    假设已经有了一个服务，它能够判断程序当前是运行在开发环境还是生产环境：
+
+    \lstinputlisting{code/code-16.ts}
+
+    那么我们就可以让程序自动地决定应该使用哪个后端：
+
+    \lstinputlisting{code/code-17.ts}
+
+    当有组件或者服务要用到 \verb`HTTP_BACKEND` 这个 Injection Token 的时候，R3 就会用工厂生产一个 \verb`HttpBackendConfig` 来提供，而这个工厂的原材料则是一个 \verb`EnvProbService`.
+
+
+\end{document}
